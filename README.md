@@ -4,16 +4,16 @@ OpsDesk is a customer-operations workspace portfolio project for managing projec
 
 ## Current state
 
-Phase 00 product/setup is complete. The Phase 01 frontend shell is implemented and its build and main workflows are verified; the tracker-required demo recording is still pending. The frontend currently uses local mock data; no backend, database, authentication, file storage, or deployment is implemented.
+Phase 00 product/setup and the Phase 01 frontend shell are complete. The tracker-required Phase 01 demo recording remains open but was waived for proceeding by the user. Phase 02 now provides a separately runnable FastAPI API foundation; its project/task data is process-local and resets on restart. The frontend still uses local mock data. PostgreSQL, authentication, file storage, and deployment are not implemented.
 
 ## Repository layout
 
 - `web/` — independently buildable React + TypeScript + Vite frontend.
-- `api/` — reserved for the FastAPI application when Phase 02 begins.
+- `api/` — FastAPI application, versioned project/task endpoints, schemas, services, in-memory repository, and tests.
 - `infra/` — reserved for local infrastructure and deployment configuration.
 - `docs/` — product definition, architecture, ordered backlog, progress, decisions, and future runbooks.
 
-The frontend communicates with the backend only through an HTTP API contract, to be defined before Phase 02 implementation. The two apps will remain independently testable and deployable.
+The frontend and backend remain independently testable and deployable. The frontend will move from its feature-local mock data to a typed HTTP client in the later integration phase.
 
 ## Frontend development
 
@@ -32,3 +32,7 @@ npm run build
 ## Product and engineering docs
 
 See [the product brief](docs/product-brief.md), [architecture](docs/architecture.md), [backlog](docs/backlog.md), [progress](docs/progress.md), and [ADRs](docs/decisions/).
+
+## Backend development
+
+See [api/README.md](api/README.md) for Python environment setup, API docs, endpoint details, and tests.
