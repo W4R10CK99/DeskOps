@@ -41,108 +41,33 @@ export function DashboardPage({ projects }: { projects: Project[] }) {
     project.tasks.map((task) => ({ ...task, project })),
   );
   const activeTasks = allTasks.filter((task) => task.status !== 'Done');
-  const completed = allTasks.filter((task) => task.status === 'Done').length;
-  const upcoming = activeTasks.slice(0, 4);
+  const upcoming = activeTasks.slice(0, 6);
   return (
     <>
       <Heading
-        eyebrow="Saturday, October 10, 2026"
-        title="Good morning, Maya ✨"
-        description="Here’s what’s happening across your workspace today."
-        action={
-          <Button variant="secondary" onClick={() => window.print()}>
-            ↗ Export overview
-          </Button>
-        }
+        eyebrow="WORKSPACE"
+        title="Overview"
+        description="Your open work across every project."
       />
-      <div className="welcome-banner">
-        <div>
-          <div className="banner-tag">YOUR WORKSPACE AT A GLANCE</div>
-          <h2>
-            Make space for the work
-            <br />
-            that <em>moves things forward.</em>
-          </h2>
-          <p>Keep projects, tasks, and the details that connect them in one calm place.</p>
-          <Link to="/projects" className="banner-link">
-            Explore your projects <span>→</span>
-          </Link>
-        </div>
-        <div className="banner-art" aria-hidden="true">
-          <div className="art-orbit orbit-one" />
-          <div className="art-orbit orbit-two" />
-          <div className="art-card card-back">
-            PROJECT
-            <br />
-            <b>NORTHSTAR</b>
-            <span>03 tasks</span>
-          </div>
-          <div className="art-card card-front">
-            <span className="art-check">✓</span>
-            <div>
-              <b>Launch checklist</b>
-              <small>Updated just now</small>
-            </div>
-            <span className="art-spark">✳</span>
-          </div>
-          <div className="art-sparkle">✳</div>
-        </div>
-      </div>
-      <div className="stats-grid">
-        <article className="stat-card">
-          <div className="stat-icon purple">◫</div>
-          <div className="stat-value">{projects.length}</div>
-          <div className="stat-label">
-            Active projects <span>↗</span>
-          </div>
-          <div className="stat-foot">Across your workspace</div>
-        </article>
-        <article className="stat-card">
-          <div className="stat-icon orange">◷</div>
-          <div className="stat-value">{activeTasks.length}</div>
-          <div className="stat-label">
-            Open tasks <span>↗</span>
-          </div>
-          <div className="stat-foot">Needs a little attention</div>
-        </article>
-        <article className="stat-card">
-          <div className="stat-icon green">✓</div>
-          <div className="stat-value">{completed}</div>
-          <div className="stat-label">
-            Tasks completed <span>↗</span>
-          </div>
-          <div className="stat-foot">A good week of progress</div>
-        </article>
-        <article className="stat-card">
-          <div className="stat-icon blue">↗</div>
-          <div className="stat-value">
-            {projects.filter((project) => project.tasks.length > 0).length}
-          </div>
-          <div className="stat-label">
-            Projects moving <span>↗</span>
-          </div>
-          <div className="stat-foot">With work in progress</div>
-        </article>
-      </div>
       <section className="panel task-panel">
         <div className="panel-heading">
           <div>
-            <div className="eyebrow">STAY IN THE LOOP</div>
+            <div className="eyebrow">NEXT ACTIONS</div>
             <h2>
-              Upcoming tasks <span className="count-chip">{activeTasks.length}</span>
+              Open tasks <span className="count-chip">{activeTasks.length}</span>
             </h2>
           </div>
           <Link className="text-link" to="/projects">
-            View all tasks <span>→</span>
+            All projects <span>→</span>
           </Link>
         </div>
         {upcoming.length ? (
           <div className="task-list">
             {upcoming.map((task) => (
               <div className="task-row" key={task.id}>
-                <div className={`task-check ${task.status === 'Review' ? 'review' : ''}`}>
-                  {task.status === 'Review' ? '◉' : ''}
-                </div>
+                <span className="task-check" aria-hidden="true">
+                  ○
+                </span>
                 <div className="task-main">
                   <strong>{task.title}</strong>
                   <span>
@@ -150,10 +75,7 @@ export function DashboardPage({ projects }: { projects: Project[] }) {
                     <span className="row-dot">·</span> {task.owner}
                   </span>
                 </div>
-                <div className="task-due">
-                  <span>Due</span>
-                  {task.due}
-                </div>
+                <div className="task-due">{task.due}</div>
                 <StatusBadge status={task.status} />
               </div>
             ))}
@@ -171,40 +93,31 @@ export function DashboardPage({ projects }: { projects: Project[] }) {
           </EmptyState>
         )}
       </section>
-      <div className="dashboard-bottom">
-        <section className="panel project-panel">
-          <div className="panel-heading">
-            <div>
-              <div className="eyebrow">KEEP THE MOMENTUM</div>
-              <h2>Recent projects</h2>
-            </div>
-            <Link className="text-link" to="/projects">
-              All projects <span>→</span>
-            </Link>
+      <section className="panel project-panel dashboard-projects">
+        <div className="panel-heading">
+          <div>
+            <div className="eyebrow">WORKSPACE</div>
+            <h2>
+              Projects <span className="count-chip">{projects.length}</span>
+            </h2>
           </div>
-          <div className="recent-projects">
-            {projects.slice(0, 3).map((project) => (
-              <Link className="recent-project" key={project.id} to={`/projects/${project.id}`}>
-                <span className={`project-avatar ${project.color}`}>{project.name.charAt(0)}</span>
-                <span>
-                  <strong>{project.name}</strong>
-                  <small>{project.customer}</small>
-                </span>
-                <span className="recent-arrow">↗</span>
-              </Link>
-            ))}
-          </div>
-        </section>
-        <section className="panel tip-panel">
-          <div className="tip-icon">✳</div>
-          <div className="eyebrow">A SMALL REMINDER</div>
-          <h2>Good work is a team sport.</h2>
-          <p>Clear owners and next steps help everyone move with confidence.</p>
-          <Link to="/projects" className="text-link">
-            Check your projects <span>→</span>
+          <Link className="text-link" to="/projects">
+            View all <span>→</span>
           </Link>
-        </section>
-      </div>
+        </div>
+        <div className="recent-projects">
+          {projects.map((project) => (
+            <Link className="recent-project" key={project.id} to={`/projects/${project.id}`}>
+              <span className={`project-avatar ${project.color}`}>{project.name.charAt(0)}</span>
+              <span>
+                <strong>{project.name}</strong>
+                <small>{project.customer}</small>
+              </span>
+              <small>{project.tasks.length} tasks</small>
+            </Link>
+          ))}
+        </div>
+      </section>
       <div className="prototype-note">
         This is a frontend prototype. Changes use in-memory sample data and reset when the page
         reloads.
@@ -258,11 +171,17 @@ export function ProjectsPage({
         </span>
       </div>
       {filtered.length ? (
-        <div className="project-grid">
-          {filtered.map((project, index) => (
-            <ProjectCard key={project.id} project={project} index={index} />
+        <section className="panel project-list" aria-label="Projects">
+          <div className="project-list-head">
+            <span>Project</span>
+            <span>Customer</span>
+            <span>Tasks</span>
+            <span>Progress</span>
+          </div>
+          {filtered.map((project) => (
+            <ProjectCard key={project.id} project={project} />
           ))}
-        </div>
+        </section>
       ) : (
         <section className="panel">
           <EmptyState
@@ -315,43 +234,23 @@ export function ProjectsPage({
   );
 }
 
-function ProjectCard({ project, index }: { project: Project; index: number }) {
+function ProjectCard({ project }: { project: Project }) {
   const done = project.tasks.filter((task) => task.status === 'Done').length;
   const progress = project.tasks.length ? Math.round((done / project.tasks.length) * 100) : 0;
   return (
-    <Link to={`/projects/${project.id}`} className="project-card">
-      <div className="project-card-top">
+    <Link to={`/projects/${project.id}`} className="project-list-row">
+      <span className="project-list-name">
         <span className={`project-avatar ${project.color}`}>{project.name.charAt(0)}</span>
-        <button
-          className="icon-button"
-          aria-label={`More options for ${project.name}`}
-          onClick={(event) => event.preventDefault()}
-        >
-          ···
-        </button>
-      </div>
-      <span className="customer-label">{project.customer}</span>
-      <h2>{project.name}</h2>
-      <p>
-        {project.description || 'A shared place to plan, coordinate, and move this work forward.'}
-      </p>
-      <div className="project-card-progress">
-        <div className="progress-label">
-          <span>Progress</span>
-          <span>{progress}%</span>
-        </div>
-        <div className="progress-track">
+        <strong>{project.name}</strong>
+      </span>
+      <span>{project.customer}</span>
+      <span>{project.tasks.length} tasks</span>
+      <span className="project-progress-cell">
+        <span>{progress}%</span>
+        <span className="progress-track">
           <span style={{ width: `${progress}%` }} />
-        </div>
-      </div>
-      <div className="project-card-footer">
-        <span>{project.tasks.length} tasks</span>
-        <span className="avatar-stack">
-          <span className={`tiny-avatar tone-${index % 3}`}>M</span>
-          <span className={`tiny-avatar tone-${(index + 1) % 3}`}>J</span>
-          <span className="avatar-more">+2</span>
         </span>
-      </div>
+      </span>
     </Link>
   );
 }

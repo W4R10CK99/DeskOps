@@ -1,6 +1,6 @@
 # Project progress
 
-Last updated: 2026-10-10
+Last updated: 2026-10-11
 
 ## Current phase
 
@@ -17,6 +17,8 @@ Phase 01 — Frontend: build the product shell. Phase 00 artifacts and Phase 01 
 - The Vite dev server is running at `http://localhost:5173/`; the verified dashboard preview is left available in the browser.
 - With the approved local preview, manually verified dashboard, project list/detail, documents, and settings routes; project create/edit; task create/edit; required-field blocking; loading and error/retry states; and success notifications.
 - At a 375px viewport, verified the navigation links remain available, the document table scrolls within its own container, and the page content stays within the viewport. Keyboard checks verified the modal focus loop and Escape close; form controls expose labels.
+- Redesigned the Phase 01 workspace around a compact dark navigation shell, concise task list, and searchable project rows. Removed the dashboard hero, decorative stats, and invented activity content; retained the in-memory mock flows and sample-data caveats. Browser review verified Overview and Projects at the available viewport, including successful project creation and notification feedback.
+- `web/npm run format:check`, `web/npm run lint`, `web/npm run typecheck`, and `web/npm run build` passed on 2026-10-11 after the redesign. The narrow 375px layout was not re-measured in this turn; its existing responsive rules were retained and adjusted to keep all sidebar icons available.
 
 ## Evidence and gaps
 
