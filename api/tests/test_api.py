@@ -3,10 +3,15 @@
 import json
 from uuid import UUID
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from opsdesk_api.config import Settings
+from opsdesk_api.database.session import Database
 from opsdesk_api.errors import ERROR_USE_CASES, STATUS_CODES
+from opsdesk_api.main import create_app
+from opsdesk_api.repositories.postgres import PostgresRepository
 from opsdesk_api.routers.dependencies import project_service
 
 
@@ -38,6 +43,19 @@ def test_health_has_request_id(client: TestClient) -> None:
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
     assert UUID(response.headers["X-Request-ID"])
+
+
+def test_production_app_uses_postgres_without_memory_fallback() -> None:
+    app = create_app(settings=Settings(database_url="postgresql+psycopg://ops:ops@localhost/test"))
+    try:
+        assert isinstance(app.state.repository, PostgresRepository)
+    finally:
+        app.state.database.engine.dispose()
+
+
+def test_database_configuration_rejects_non_postgres_driver() -> None:
+    with pytest.raises(ValueError, match=r"postgresql\+psycopg"):
+        Database("sqlite:///./opsdesk.db")
 
 
 def test_project_and_task_create_read_update(client: TestClient) -> None:

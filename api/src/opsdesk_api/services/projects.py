@@ -13,7 +13,6 @@ from opsdesk_api.schemas.projects import (
     ProjectSort,
     ProjectUpdate,
 )
-from opsdesk_api.services.pagination import page_items
 
 
 class ProjectService:
@@ -30,28 +29,15 @@ class ProjectService:
         offset: int,
         limit: int,
     ) -> ProjectPage:
-        records = self.repository.list_projects()
-        if query:
-            term = query.casefold()
-            records = [
-                project
-                for project in records
-                if term in f"{project.name} {project.customer} {project.description}".casefold()
-            ]
-        if customer:
-            records = [
-                project for project in records if project.customer.casefold() == customer.casefold()
-            ]
-        rows, total = page_items(
-            records,
-            key=lambda project: (getattr(project, sort).casefold(), str(project.id)),
+        rows, total = self.repository.list_projects(
+            query=query,
+            customer=customer,
+            sort=sort,
             descending=descending,
             offset=offset,
             limit=limit,
         )
-        task_counts: dict[UUID, int] = {}
-        for task in self.repository.list_tasks():
-            task_counts[task.project_id] = task_counts.get(task.project_id, 0) + 1
+        task_counts = self.repository.count_tasks_for_projects([project.id for project in rows])
         return ProjectPage(
             items=[
                 ProjectRead(
@@ -70,7 +56,7 @@ class ProjectService:
         project = self.repository.get_project(project_id)
         if project is None:
             raise ApiError(404, "not_found", "Project not found")
-        task_count = sum(task.project_id == project_id for task in self.repository.list_tasks())
+        task_count = self.repository.count_tasks_for_projects([project_id]).get(project_id, 0)
         return ProjectRead(**asdict(project), task_count=task_count)
 
     def create_project(self, data: ProjectCreate) -> ProjectRead:
@@ -81,5 +67,5 @@ class ProjectService:
         project = self.repository.update_project(project_id, changes)
         if project is None:
             raise ApiError(404, "not_found", "Project not found")
-        task_count = sum(task.project_id == project_id for task in self.repository.list_tasks())
+        task_count = self.repository.count_tasks_for_projects([project_id]).get(project_id, 0)
         return ProjectRead(**asdict(project), task_count=task_count)

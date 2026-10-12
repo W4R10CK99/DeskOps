@@ -4,13 +4,13 @@ OpsDesk is a customer-operations workspace portfolio project for managing projec
 
 ## Current state
 
-Phase 00 product/setup and the Phase 01 frontend shell are complete. The tracker-required Phase 01 demo recording remains open but was waived for proceeding by the user. Phase 02 now provides a separately runnable FastAPI API foundation; its project/task data is process-local and resets on restart. The frontend still uses local mock data. PostgreSQL, authentication, file storage, and deployment are not implemented.
+Phase 00 product/setup and the Phase 02 FastAPI API foundation are complete. The Phase 01 frontend shell remains unchanged and uses local mock data; its tracker-required demo recording remains open but was waived for proceeding. Phase 03 is in progress: PostgreSQL models, migrations, repository, local Compose setup, and database integration tests are authored, but live database gates remain unverified because Docker/PostgreSQL are unavailable in the current environment. Authentication, authorization, file storage, frontend/API integration, and deployment are later phases.
 
 ## Repository layout
 
 - `web/` — independently buildable React + TypeScript + Vite frontend.
-- `api/` — FastAPI application, versioned project/task endpoints, schemas, services, in-memory repository, and tests.
-- `infra/` — reserved for local infrastructure and deployment configuration.
+- `api/` — FastAPI application, versioned project/task endpoints, schemas, services, PostgreSQL and test repositories, Alembic migrations, and tests.
+- `infra/` — local PostgreSQL Compose configuration and infrastructure documentation.
 - `docs/` — product definition, architecture, ordered backlog, progress, decisions, and future runbooks.
 
 The frontend and backend remain independently testable and deployable. The frontend will move from its feature-local mock data to a typed HTTP client in the later integration phase.

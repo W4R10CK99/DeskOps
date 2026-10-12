@@ -1,13 +1,15 @@
 """FastAPI application factory and error/logging boundaries."""
 
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from opsdesk_api.config import Settings
+from opsdesk_api.config import DEFAULT_WORKSPACE_ID, Settings
+from opsdesk_api.database.session import Database
 from opsdesk_api.errors import (
     ApiError,
     error_body,
@@ -18,7 +20,7 @@ from opsdesk_api.errors import (
 )
 from opsdesk_api.logging_config import configure_logging
 from opsdesk_api.middleware import request_context
-from opsdesk_api.repositories.memory import InMemoryRepository
+from opsdesk_api.repositories.postgres import PostgresRepository
 from opsdesk_api.repositories.protocol import OpsRepository
 from opsdesk_api.routers.health import router as health_router
 from opsdesk_api.routers.projects import router as projects_router
@@ -34,16 +36,29 @@ def create_app(
 ) -> FastAPI:
     config = settings or Settings.from_environment()
     configure_logging(config.log_level)
+    database = None if repository is not None else Database(config.database_url)
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        try:
+            if database is not None:
+                # Fail visibly when PostgreSQL is unavailable; never mask it with memory.
+                with database.engine.connect():
+                    pass
+            yield
+        finally:
+            if database is not None:
+                database.engine.dispose()
+
     app = FastAPI(
         title=config.app_name,
         version="1.0.0",
-        description=(
-            "OpsDesk API foundation. Project and task data uses process-local memory and "
-            "resets when the service restarts."
-        ),
+        description="OpsDesk API. Project and task records are stored in PostgreSQL.",
+        lifespan=lifespan,
     )
-    data_store = repository or InMemoryRepository()
+    data_store = repository or PostgresRepository(database.sessions, DEFAULT_WORKSPACE_ID)
     app.state.settings = config
+    app.state.database = database
     app.state.repository = data_store
     app.state.project_service = ProjectService(data_store)
     app.state.task_service = TaskService(data_store)

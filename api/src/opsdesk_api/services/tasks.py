@@ -1,7 +1,6 @@
 """Task business logic."""
 
 from dataclasses import asdict
-from datetime import date
 from uuid import UUID, uuid4
 
 from opsdesk_api.errors import ApiError
@@ -16,7 +15,6 @@ from opsdesk_api.schemas.tasks import (
     TaskStatus,
     TaskUpdate,
 )
-from opsdesk_api.services.pagination import page_items
 
 
 class TaskService:
@@ -34,24 +32,11 @@ class TaskService:
         offset: int,
         limit: int,
     ) -> TaskPage:
-        records = self.repository.list_tasks()
-        if project_id is not None:
-            records = [task for task in records if task.project_id == project_id]
-        if status is not None:
-            records = [task for task in records if task.status == status]
-        if query:
-            term = query.casefold()
-            records = [task for task in records if term in f"{task.title} {task.owner}".casefold()]
-
-        def sort_key(task):
-            value = getattr(task, sort)
-            if isinstance(value, date):
-                return value, str(task.id)
-            return value.casefold(), str(task.id)
-
-        rows, total = page_items(
-            records,
-            key=sort_key,
+        rows, total = self.repository.list_tasks(
+            project_id=project_id,
+            status=status,
+            query=query,
+            sort=sort,
             descending=order == "desc",
             offset=offset,
             limit=limit,
