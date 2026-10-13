@@ -7,11 +7,14 @@ flowchart LR
   U[User] -->|HTTPS in a deployed environment| B[Browser]
   subgraph Client boundary
     B --> W[web: React + TypeScript + Vite]
+    W -->|Auth code + PKCE| IDP[Auth0 OIDC]
     W --> M[Feature mock data]
   end
-  B -. later integration over versioned JSON/HTTPS .-> A[api: FastAPI]
+  W -->|Bearer access token + workspace selector| A[api: FastAPI]
   subgraph Server boundary
-    A --> S[Project/task services]
+    A -->|JWKS signature + issuer/audience/expiry validation| IDP
+    A -->|verified subject + membership| AUTHZ[Workspace authorization]
+    AUTHZ --> S[Project/task services]
     S --> R[Repository interface]
     R --> PR[SQLAlchemy repository · Phase 03]
     PR --> D[(PostgreSQL)]
@@ -22,17 +25,19 @@ flowchart LR
   A -. only after Phase 07 core gate .-> AI[AI / retrieval / bounded tools]
 ```
 
-The browser UI still uses its feature-local mock-data boundary; it does not call the API yet. The independent versioned FastAPI app uses Pydantic transport schemas, application services, and a repository protocol. Phase 03 adds a SQLAlchemy/PostgreSQL repository, Alembic migrations, and transactionally written audit events. The migration models Workspace, Membership, Project, Task, Document metadata, and AuditEvent. Current project/task endpoints use one configured local workspace because auth and workspace selection are not implemented; the structural tables do not provide authentication, authorization, or tenant isolation. Document metadata does not store file bytes and has no CRUD routes. PostgreSQL credentials stay server-side. Frontend/API integration remains a later phase.
+Auth0 authenticates users through OIDC authorization code + PKCE. The React SDK caches access tokens in memory and calls `GET /api/v1/workspaces` before showing the workspace shell. The API validates the token signature against Auth0 JWKS and checks issuer, audience, expiry, issued-at, and subject. It maps `(issuer, sub)` to a PostgreSQL membership; email is not an authorization key. `X-Workspace-ID` is only a selection hint: membership is required, and each request builds a workspace-scoped repository. Roles are `owner` and `member`; members can use project/task operations, while owner-only API operations can manage membership. Initial owner provisioning uses a privileged command after an operator verifies the provider subject. See ADR 0002 for trust boundaries and trade-offs.
+
+Project/task list and CRUD data in the web UI still uses feature-local mock adapters. The frontend only calls the API to verify the signed-in identity's workspace memberships; it does not replace project/task data flows. PostgreSQL models Workspace, Membership, Project, Task, Document metadata, and AuditEvent. Authenticated document access currently returns workspace-scoped metadata only; there is no file-byte storage or download route until the storage phase. Workspace members may delete tasks; a project with tasks cannot be deleted, and deleting an empty project preserves and detaches associated document metadata. PostgreSQL credentials and OIDC server configuration stay on the backend. Full frontend/API integration remains a later phase.
 
 ## Initial frontend flow
 
 The shared app shell routes users between Dashboard, Projects, Project Detail, Documents, and Settings. Feature modules own their mock records and UI state. The Phase 02 HTTP contract is under `/api/v1`; a later integration phase will add a typed `web/src/api/` client and replace mock adapters at the feature data boundary without importing Python or backend runtime code.
 
-## Phase 02–03 API and persistence structure
+## Phase 02–04 API, persistence, and identity structure
 
-`api/src/opsdesk_api/` separates environment settings/application construction (`config.py`, `main.py`), HTTP routers (`routers/`), transport models (`schemas/`), business rules (`services/`), repository contract/implementations (`repositories/`), SQLAlchemy metadata/session management (`database/`), and error/request logging. Production app construction selects PostgreSQL and checks connectivity during startup; it never falls back to memory. Test code can inject the explicit in-memory adapter for isolated API contract tests. Alembic migrations under `api/migrations/` are the only schema-creation path. The process-health `/health` route does not check PostgreSQL. API operations are currently scoped to the configured default workspace, with no auth/authorization boundary yet.
+`api/src/opsdesk_api/` separates settings/application construction, OIDC token validation (`auth.py`), routers, transport schemas, services, repository contract/implementations, SQLAlchemy metadata/session management, and safe request logging. Production app construction selects PostgreSQL and checks connectivity during startup; it never falls back to memory. Test code can inject the explicit in-memory adapter for API contract tests, while workspace authorization integration tests require an isolated PostgreSQL `*_test` database. Alembic migrations are the only schema-change path. `/health` is intentionally public and reports process health, not database readiness. Protected routes require a verified bearer token and matching workspace membership.
 
-The local default workspace is seeded by the initial migration with a stable UUID also used by the API configuration. Project/task audit events are written in the same SQLAlchemy transaction as each mutation, so failure of either write rolls the transaction back. Project deletion is not exposed; schema foreign keys use restrictive behavior rather than cascading core data. A nullable document-to-project foreign key uses `SET NULL` to retain metadata if its project is later removed through a future administrative path.
+The local default workspace is seeded by the initial migration with a stable UUID. Migration `20261012_0002` adds issuer/subject identity to memberships and allows email to be absent. Project/task audit events record the acting membership in the same transaction as each mutation, including deletes. Task deletion and empty-project deletion are workspace-scoped; the project→task foreign key restricts deletion while tasks exist, and document metadata remains in its workspace with `project_id` set null when its project is deleted.
 
 ## Product flow sketches
 
@@ -40,7 +45,7 @@ The local default workspace is seeded by the initial migration with a stable UUI
 Dashboard → Projects → Project Detail → Create/edit task → visible success
 Dashboard → Documents → search/filter → document detail (future)
 Shared navigation → Settings (workspace preferences placeholder)
-Future: Sign in → Workspace Dashboard (identity and authorization are later phases)
+Sign in → backend token validation → membership lookup → workspace-scoped API access
 ```
 
 ## Deployment topology (target, not implemented)

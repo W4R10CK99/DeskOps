@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useAuth0 } from '@auth0/auth0-react';
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { DocumentsPage } from './features/documents/pages';
 import {
@@ -17,6 +18,166 @@ const navigation = [
 ];
 
 export default function App() {
+  const {
+    isLoading,
+    isAuthenticated,
+    error,
+    loginWithRedirect,
+    logout,
+    user,
+    getAccessTokenSilently,
+  } = useAuth0();
+  const [backendState, setBackendState] = useState<'checking' | 'ready' | 'no-workspace' | 'error'>(
+    'checking',
+  );
+  const [backendRetry, setBackendRetry] = useState(0);
+  const [workspaceName, setWorkspaceName] = useState('Workspace');
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setBackendState('checking');
+      return;
+    }
+    let current = true;
+    setBackendState('checking');
+    void (async () => {
+      try {
+        const token = await getAccessTokenSilently();
+        const apiBase = (
+          import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api/v1'
+        ).replace(/\/$/, '');
+        const response = await fetch(`${apiBase}/workspaces`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) throw new Error('Backend identity verification failed');
+        const workspaces: unknown = await response.json();
+        if (!Array.isArray(workspaces)) throw new Error('Invalid workspace response');
+        if (current) {
+          const firstWorkspace = workspaces[0] as { name?: unknown } | undefined;
+          setWorkspaceName(
+            typeof firstWorkspace?.name === 'string' ? firstWorkspace.name : 'Workspace',
+          );
+          setBackendState(workspaces.length > 0 ? 'ready' : 'no-workspace');
+        }
+      } catch {
+        if (current) setBackendState('error');
+      }
+    })();
+    return () => {
+      current = false;
+    };
+  }, [isAuthenticated, getAccessTokenSilently, backendRetry]);
+
+  if (isLoading) {
+    return (
+      <main className="identity-screen" aria-live="polite">
+        <div className="identity-card">
+          <Loading label="Verifying your identity…" />
+        </div>
+      </main>
+    );
+  }
+
+  if (error) {
+    return (
+      <main className="identity-screen">
+        <section className="identity-card" role="alert">
+          <h1>Sign-in could not be completed</h1>
+          <p>Check your connection or identity provider settings, then try again.</p>
+          <button className="primary-button" onClick={() => void loginWithRedirect()}>
+            Try signing in again
+          </button>
+        </section>
+      </main>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <main className="identity-screen">
+        <section className="identity-card" aria-labelledby="sign-in-title">
+          <div className="brand-mark" aria-hidden="true">
+            o
+          </div>
+          <p className="eyebrow">OpsDesk workspace</p>
+          <h1 id="sign-in-title">Sign in to continue</h1>
+          <p>Use your organization’s secure identity provider to access OpsDesk.</p>
+          <button className="primary-button" onClick={() => void loginWithRedirect()}>
+            Continue to sign in
+          </button>
+        </section>
+      </main>
+    );
+  }
+
+  if (backendState !== 'ready') {
+    const message =
+      backendState === 'checking'
+        ? 'Confirming your identity and workspace access…'
+        : backendState === 'no-workspace'
+          ? 'Your identity is verified, but no OpsDesk workspace has been assigned to this account.'
+          : 'OpsDesk could not verify your access with the API. Check your connection and try again.';
+    return (
+      <main className="identity-screen" aria-live="polite">
+        <section className="identity-card" aria-labelledby="workspace-access-title">
+          <h1 id="workspace-access-title">
+            {backendState === 'no-workspace'
+              ? 'Workspace access required'
+              : 'Checking workspace access'}
+          </h1>
+          <p>{message}</p>
+          {backendState === 'error' && (
+            <div className="identity-actions">
+              <button
+                className="primary-button"
+                onClick={() => setBackendRetry((attempt) => attempt + 1)}
+              >
+                Retry verification
+              </button>
+              <button className="state-preview" onClick={() => void loginWithRedirect()}>
+                Sign in again
+              </button>
+            </div>
+          )}
+          {backendState === 'no-workspace' && (
+            <button
+              className="primary-button"
+              onClick={() => setBackendRetry((attempt) => attempt + 1)}
+            >
+              Check workspace access again
+            </button>
+          )}
+          {backendState !== 'checking' && (
+            <button
+              className="state-preview"
+              onClick={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+            >
+              Sign out
+            </button>
+          )}
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <WorkspaceApp
+      userLabel={user?.name || user?.email || 'Signed-in user'}
+      workspaceName={workspaceName}
+      onSignOut={() => logout({ logoutParams: { returnTo: window.location.origin } })}
+    />
+  );
+}
+
+function WorkspaceApp({
+  userLabel,
+  workspaceName,
+  onSignOut,
+}: {
+  userLabel: string;
+  workspaceName: string;
+  onSignOut: () => void;
+}) {
   const [projects, setProjects] = useState(initialProjects);
   const [notice, setNotice] = useState('');
   const [loadState, setLoadState] = useState<'ready' | 'loading' | 'error'>('ready');
@@ -71,8 +232,8 @@ export default function App() {
         <div className="workspace-switch">
           <div className="workspace-avatar">W</div>
           <div>
-            <strong>Workspace One</strong>
-            <span>Free workspace</span>
+            <strong>{workspaceName}</strong>
+            <span>Authorized workspace</span>
           </div>
           <span className="chevron">⌄</span>
         </div>
@@ -120,10 +281,12 @@ export default function App() {
             Settings
           </NavLink>
           <div className="profile">
-            <div className="profile-avatar">MC</div>
+            <div className="profile-avatar" aria-hidden="true">
+              {userLabel.slice(0, 1).toUpperCase()}
+            </div>
             <div>
-              <strong>Maya Chen</strong>
-              <span>Workspace admin</span>
+              <strong>{userLabel}</strong>
+              <span>Signed in</span>
             </div>
             <span className="more">···</span>
           </div>
@@ -159,7 +322,12 @@ export default function App() {
             <button className="icon-button" aria-label="Help">
               ?
             </button>
-            <div className="top-avatar">MC</div>
+            <div className="top-avatar" aria-hidden="true">
+              {userLabel.slice(0, 1).toUpperCase()}
+            </div>
+            <button className="state-preview" onClick={onSignOut}>
+              Sign out
+            </button>
           </div>
         </header>
         {notice && (

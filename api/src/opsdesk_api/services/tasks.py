@@ -63,6 +63,10 @@ class TaskService:
             raise ApiError(404, "not_found", "Task not found")
         return TaskRead(**asdict(task))
 
+    def delete_task(self, task_id: UUID) -> None:
+        if not self.repository.delete_task(task_id):
+            raise ApiError(404, "not_found", "Task not found")
+
     def require_project(self, project_id: UUID) -> None:
         if self.repository.get_project(project_id) is None:
             raise ApiError(404, "not_found", "Project not found")

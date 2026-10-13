@@ -87,6 +87,19 @@ def update_project(
     return service.update_project(project_id, payload)
 
 
+@router.delete(
+    "/{project_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={**ERROR_RESPONSES, 409: {"description": "Project still has tasks"}},
+    summary="Delete an empty project",
+)
+def delete_project(
+    project_id: UUID,
+    service: Annotated[ProjectService, Depends(project_service)],
+) -> None:
+    service.delete_project(project_id)
+
+
 @router.get(
     "/{project_id}/tasks",
     response_model=TaskPage,

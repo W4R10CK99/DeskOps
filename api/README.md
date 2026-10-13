@@ -1,6 +1,30 @@
 # OpsDesk API
 
-The API is a separate FastAPI application. The Phase 02 HTTP contract and Pydantic schemas remain in place; production app instances now use PostgreSQL through SQLAlchemy. There is no in-memory fallback. Run Alembic migrations before starting the API. Local project/task routes operate in the seeded `OpsDesk Local` workspace until authentication and workspace selection arrive in later phases.
+The API is a separate FastAPI application. It uses PostgreSQL through SQLAlchemy and validates Auth0 OIDC access tokens before granting workspace access. There is no in-memory production fallback. Run Alembic migrations before starting the API. Project/task data stays mock-backed in the web app until the later frontend integration phase.
+
+## Identity and authorization
+
+Configure an Auth0 tenant, a Single Page Application, and an API. Set the issuer to the exact tenant issuer including its trailing slash, and use the API identifier as the audience in both applications. In the Auth0 SPA settings allow `http://localhost:5173` for callback, logout, and web origins. Keep the SPA client ID public; never put a client secret in Vite variables. The browser uses Auth0 authorization code + PKCE and keeps credentials in memory. It calls `GET /api/v1/workspaces` with a short-lived access token before displaying the workspace shell. This proves backend token validation, but project/task screens still use demo records.
+
+Set these API variables in the backend process before starting it:
+
+```powershell
+$env:OPSDESK_OIDC_ISSUER = "https://your-tenant.example.auth0.com/"
+$env:OPSDESK_OIDC_AUDIENCE = "https://opsdesk.example/api"
+$env:OPSDESK_CORS_ORIGINS = "http://localhost:5173"
+```
+
+`OPSDESK_OIDC_JWKS_URL` is optional; by default the API uses `{issuer}/.well-known/jwks.json`. FastAPI verifies the RS256 signature against issuer keys and enforces issuer, audience, expiration, issued-at, and subject claims. Identity is `(issuer, sub)`; email is optional and never grants access. The API does not trust user, role, or workspace values from resource request bodies.
+
+Protected project/task operations require `Authorization: Bearer <access-token>` and `X-Workspace-ID: <workspace-uuid>`. The selected workspace header is only a hint: a matching membership for the verified identity is required, and repository queries are scoped to that workspace. All workspace members can use the current project/task operations. Only owners can add a member or assign a role. Members may delete tasks; a project may be deleted only after its tasks are removed (otherwise `409 conflict`). Deletes are audited in the same transaction. Deleting an empty project detaches its document metadata (`project_id` becomes null) without deleting the metadata or any file bytes. `GET /api/v1/workspaces` lists only the caller's memberships; `GET /api/v1/documents/{id}` exposes metadata only after a workspace check. `/health` remains public and reports process health only.
+
+For first-owner bootstrap, create/sign in the user in Auth0, copy its stable `sub` from the Auth0 user profile, run migrations, and use the privileged one-time command below. It refuses to add another bootstrap owner once the workspace already has one:
+
+```powershell
+python -m opsdesk_api.provision_owner --workspace-id 00000000-0000-4000-8000-000000000001 --subject "auth0|provider-user-id" --email "operator@example.com"
+```
+
+The command uses the configured `OPSDESK_DATABASE_URL` and `OPSDESK_OIDC_ISSUER`; database access is the trusted administrative boundary. Subsequent member additions must use the owner-only API operation. Real Auth0 sign-in/JWKS configuration requires the developer's tenant and was not simulated by automated tests.
 
 ## Local PostgreSQL
 
@@ -49,15 +73,15 @@ ruff check --no-cache src tests migrations
 ruff format --check --no-cache src tests migrations
 ```
 
-For PostgreSQL integration coverage, create a separate database ending in `_test` (for example, from the repository root run `docker compose --env-file .env -f infra/compose.yaml exec postgres createdb -U opsdesk opsdesk_test`), set `$env:OPSDESK_TEST_DATABASE_URL` to a URL such as `postgresql+psycopg://opsdesk:opsdesk@localhost:5432/opsdesk_test`, and run `python -m pytest`. Tests cover process-restart persistence, seed-backed pagination, repeated seeding and preservation of unrelated records, seed transaction rollback, a database foreign-key constraint, and rollback after an injected failure during the audit flush. Without that environment variable, PostgreSQL integration tests are skipped and must not be reported as passed. A database-free regression test always verifies all 60 deterministic task IDs are unique.
+For PostgreSQL integration coverage, create a separate database ending in `_test` (for example, from the repository root run `docker compose --env-file .env -f infra/compose.yaml exec postgres createdb -U opsdesk opsdesk_test`), set `$env:OPSDESK_TEST_DATABASE_URL` to its URL, and run `python -m pytest -vv`. Tests cover persistence, seed/pagination, rollback, and workspace authorization. The authorization suite creates two workspaces and three test identities and verifies scoped project/task/document-metadata access, owner/member checks, workspace-ID tampering, forged fields, cross-workspace DELETE denial, project deletion conflict while tasks exist, metadata detachment after permitted deletion, and non-leaking errors. Provider-independent tests verify signed JWT claims and failure paths. Without the test URL, PostgreSQL tests are skipped. A database-free regression test always verifies all 60 deterministic task IDs are unique.
 
 ## Data and boundaries
 
-Alembic creates workspaces, memberships, projects, tasks, document metadata, and audit events. Membership email/role are structural records only; authentication, authorization, and tenant isolation are not implemented. Project/task create and update operations write their audit event in the same transaction. Foreign keys restrict deletion of workspaces/projects; removing a project leaves linked document metadata detached (`project_id` set null). File bytes are not stored. Document metadata, membership, and audit tables do not have public CRUD endpoints in this phase.
+Alembic creates workspaces, memberships, projects, tasks, document metadata, and audit events. Project/task create, update, and delete operations write their audit event in the same transaction. Workspace membership listing and owner-only member creation are available; membership removal and owner transfer are not. Foreign keys restrict deletion of workspaces/projects; a project with tasks returns 409, and removing an empty project leaves linked document metadata detached (`project_id` set null). File bytes are not stored. The only document endpoint returns metadata after a workspace membership check. Private file upload/download is not implemented.
 
-Project/task list filtering, sorting, and pagination execute through the repository. The frontend continues to use feature-local mock data in `web/src/features/projects/data.ts`; the later integration phase will introduce a typed client under `web/src/api/` and swap data adapters without coupling the UI to backend modules.
+Project/task list filtering, sorting, pagination, and workspace-scoped deletion execute through the repository. The frontend continues to use feature-local mock data in `web/src/features/projects/data.ts`; the later integration phase will introduce a typed client under `web/src/api/` and swap data adapters without coupling the UI to backend modules.
 
-Configuration is read from `OPSDESK_APP_NAME`, `OPSDESK_ENVIRONMENT`, `OPSDESK_LOG_LEVEL`, and `OPSDESK_DATABASE_URL`. The initial migration and app use the same stable local workspace UUID. `.env.example` contains local placeholders only; use real secrets only in ignored local files or deployment secret storage.
+Configuration is read from `OPSDESK_APP_NAME`, `OPSDESK_ENVIRONMENT`, `OPSDESK_LOG_LEVEL`, `OPSDESK_DATABASE_URL`, `OPSDESK_OIDC_ISSUER`, `OPSDESK_OIDC_AUDIENCE`, optional `OPSDESK_OIDC_JWKS_URL`, and `OPSDESK_CORS_ORIGINS`. The initial migration and app use the same stable local workspace UUID. `.env.example` contains local placeholders only; use real secrets only in ignored local files or deployment secret storage. No application-level API rate limiter is configured; Auth0 protects interactive sign-in, but API callers can still make repeated requests, so apply edge/API throttling before public deployment. Access tokens are stateless JWTs: logout clears the browser session but a copied token remains usable until expiry unless the issuer or a revocation mechanism rejects it. Keep access-token lifetime short and never log bearer headers or request bodies.
 
 ## Query/index review
 

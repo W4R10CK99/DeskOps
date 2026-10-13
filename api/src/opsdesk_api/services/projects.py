@@ -69,3 +69,7 @@ class ProjectService:
             raise ApiError(404, "not_found", "Project not found")
         task_count = self.repository.count_tasks_for_projects([project_id]).get(project_id, 0)
         return ProjectRead(**asdict(project), task_count=task_count)
+
+    def delete_project(self, project_id: UUID) -> None:
+        if not self.repository.delete_project(project_id):
+            raise ApiError(404, "not_found", "Project not found")

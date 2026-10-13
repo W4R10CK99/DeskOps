@@ -3,6 +3,7 @@
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from opsdesk_api.database.models import AuditEvent, Project, Task
@@ -18,9 +19,15 @@ def _contains_pattern(value: str) -> str:
 
 
 class PostgresRepository:
-    def __init__(self, sessions: sessionmaker[Session], default_workspace_id: UUID) -> None:
+    def __init__(
+        self,
+        sessions: sessionmaker[Session],
+        default_workspace_id: UUID,
+        actor_membership_id: UUID | None = None,
+    ) -> None:
         self._sessions = sessions
         self._default_workspace_id = default_workspace_id
+        self._actor_membership_id = actor_membership_id
 
     def list_projects(
         self, *, query, customer, sort, descending, offset, limit
@@ -71,6 +78,7 @@ class PostgresRepository:
             session.add(
                 AuditEvent(
                     workspace_id=self._default_workspace_id,
+                    membership_id=self._actor_membership_id,
                     action="project.created",
                     entity_type="project",
                     entity_id=project_id,
@@ -94,6 +102,7 @@ class PostgresRepository:
             session.add(
                 AuditEvent(
                     workspace_id=row.workspace_id,
+                    membership_id=self._actor_membership_id,
                     action="project.updated",
                     entity_type="project",
                     entity_id=project_id,
@@ -101,6 +110,38 @@ class PostgresRepository:
             )
             session.flush()
             return self._project_record(row)
+
+    def delete_project(self, project_id: UUID) -> bool:
+        try:
+            with self._sessions.begin() as session:
+                row = session.scalar(
+                    select(Project).where(
+                        Project.id == project_id,
+                        Project.workspace_id == self._default_workspace_id,
+                    )
+                )
+                if row is None:
+                    return False
+                if session.scalar(select(func.count(Task.id)).where(Task.project_id == project_id)):
+                    raise ApiError(409, "conflict", "Project still has tasks")
+                session.add(
+                    AuditEvent(
+                        workspace_id=row.workspace_id,
+                        membership_id=self._actor_membership_id,
+                        action="project.deleted",
+                        entity_type="project",
+                        entity_id=project_id,
+                    )
+                )
+                session.delete(row)
+                session.flush()
+                return True
+        except IntegrityError as exc:
+            # The FK remains the final guard if a task is concurrently attached.
+            diagnostic = getattr(exc.orig, "diag", None)
+            if getattr(diagnostic, "constraint_name", None) == "tasks_project_id_fkey":
+                raise ApiError(409, "conflict", "Project still has tasks") from exc
+            raise
 
     def list_tasks(
         self, *, project_id, status, query, sort, descending, offset, limit
@@ -176,6 +217,7 @@ class PostgresRepository:
             session.add(
                 AuditEvent(
                     workspace_id=project.workspace_id,
+                    membership_id=self._actor_membership_id,
                     action="task.created",
                     entity_type="task",
                     entity_id=task_id,
@@ -201,6 +243,7 @@ class PostgresRepository:
             session.add(
                 AuditEvent(
                     workspace_id=row.project.workspace_id,
+                    membership_id=self._actor_membership_id,
                     action="task.updated",
                     entity_type="task",
                     entity_id=task_id,
@@ -208,6 +251,32 @@ class PostgresRepository:
             )
             session.flush()
             return self._task_record(row)
+
+    def delete_task(self, task_id: UUID) -> bool:
+        with self._sessions.begin() as session:
+            row = session.scalar(
+                select(Task)
+                .join(Project)
+                .where(
+                    Task.id == task_id,
+                    Project.workspace_id == self._default_workspace_id,
+                )
+            )
+            if row is None:
+                return False
+            workspace_id = row.project.workspace_id
+            session.add(
+                AuditEvent(
+                    workspace_id=workspace_id,
+                    membership_id=self._actor_membership_id,
+                    action="task.deleted",
+                    entity_type="task",
+                    entity_id=task_id,
+                )
+            )
+            session.delete(row)
+            session.flush()
+            return True
 
     @staticmethod
     def _project_record(row: Project) -> ProjectRecord:

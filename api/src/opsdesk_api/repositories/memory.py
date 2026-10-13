@@ -4,6 +4,7 @@ from dataclasses import replace
 from datetime import date
 from uuid import UUID
 
+from opsdesk_api.errors import ApiError
 from opsdesk_api.schemas.projects import ProjectCreate, ProjectUpdate
 from opsdesk_api.schemas.tasks import TaskCreate, TaskUpdate
 from opsdesk_api.services.models import ProjectRecord, TaskRecord
@@ -47,6 +48,14 @@ class InMemoryRepository:
         self._projects[project_id] = record
         return record
 
+    def delete_project(self, project_id: UUID) -> bool:
+        if project_id not in self._projects:
+            return False
+        if any(task.project_id == project_id for task in self._tasks.values()):
+            raise ApiError(409, "conflict", "Project still has tasks")
+        del self._projects[project_id]
+        return True
+
     def list_tasks(
         self, *, project_id, status, query, sort, descending, offset, limit
     ) -> tuple[list[TaskRecord], int]:
@@ -89,3 +98,6 @@ class InMemoryRepository:
         record = replace(current, **changes.model_dump(exclude_unset=True))
         self._tasks[task_id] = record
         return record
+
+    def delete_task(self, task_id: UUID) -> bool:
+        return self._tasks.pop(task_id, None) is not None

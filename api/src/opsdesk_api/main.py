@@ -5,7 +5,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from jwt import PyJWKClient
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from opsdesk_api.config import DEFAULT_WORKSPACE_ID, Settings
@@ -22,11 +24,11 @@ from opsdesk_api.logging_config import configure_logging
 from opsdesk_api.middleware import request_context
 from opsdesk_api.repositories.postgres import PostgresRepository
 from opsdesk_api.repositories.protocol import OpsRepository
+from opsdesk_api.routers.documents import router as documents_router
 from opsdesk_api.routers.health import router as health_router
 from opsdesk_api.routers.projects import router as projects_router
 from opsdesk_api.routers.tasks import router as tasks_router
-from opsdesk_api.services.projects import ProjectService
-from opsdesk_api.services.tasks import TaskService
+from opsdesk_api.routers.workspaces import router as workspaces_router
 
 logger = logging.getLogger("opsdesk.errors")
 
@@ -56,12 +58,24 @@ def create_app(
         description="OpsDesk API. Project and task records are stored in PostgreSQL.",
         lifespan=lifespan,
     )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(config.cors_origins),
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Workspace-ID"],
+        expose_headers=["X-Request-ID"],
+    )
     data_store = repository or PostgresRepository(database.sessions, DEFAULT_WORKSPACE_ID)
     app.state.settings = config
     app.state.database = database
     app.state.repository = data_store
-    app.state.project_service = ProjectService(data_store)
-    app.state.task_service = TaskService(data_store)
+    jwks_url = config.oidc_jwks_url or (
+        f"{config.oidc_issuer.rstrip('/')}/.well-known/jwks.json" if config.oidc_issuer else ""
+    )
+    app.state.jwks_client = (
+        PyJWKClient(jwks_url, cache_keys=True) if jwks_url and config.oidc_audience else None
+    )
     app.middleware("http")(request_context)
     app.add_exception_handler(ApiError, handle_api_error)
     app.add_exception_handler(StarletteHTTPException, handle_http_error)
@@ -87,8 +101,10 @@ def create_app(
         )
 
     app.include_router(health_router)
+    app.include_router(documents_router)
     app.include_router(projects_router)
     app.include_router(tasks_router)
+    app.include_router(workspaces_router)
     return app
 
 

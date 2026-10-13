@@ -11,6 +11,7 @@ from opsdesk_api.config import Settings
 from opsdesk_api.database.session import Database
 from opsdesk_api.errors import ERROR_USE_CASES, STATUS_CODES
 from opsdesk_api.main import create_app
+from opsdesk_api.repositories.memory import InMemoryRepository
 from opsdesk_api.repositories.postgres import PostgresRepository
 from opsdesk_api.routers.dependencies import project_service
 
@@ -45,6 +46,40 @@ def test_health_has_request_id(client: TestClient) -> None:
     assert UUID(response.headers["X-Request-ID"])
 
 
+def test_cors_preflight_allows_only_configured_frontend_origin() -> None:
+    app = create_app(
+        settings=Settings(cors_origins=("http://localhost:5173",)),
+        repository=InMemoryRepository(),
+    )
+    with TestClient(app) as test_client:
+        allowed = test_client.options(
+            "/api/v1/projects",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization,x-workspace-id",
+            },
+        )
+        denied = test_client.options(
+            "/api/v1/projects",
+            headers={
+                "Origin": "https://untrusted.example",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization,x-workspace-id",
+            },
+        )
+
+    assert allowed.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert "access-control-allow-origin" not in denied.headers
+
+
+def test_cors_configuration_rejects_wildcard_origins(monkeypatch) -> None:
+    monkeypatch.setenv("OPSDESK_CORS_ORIGINS", "*")
+
+    with pytest.raises(ValueError, match="explicit origin allowlist"):
+        Settings.from_environment()
+
+
 def test_production_app_uses_postgres_without_memory_fallback() -> None:
     app = create_app(settings=Settings(database_url="postgresql+psycopg://ops:ops@localhost/test"))
     try:
@@ -77,6 +112,27 @@ def test_project_and_task_create_read_update(client: TestClient) -> None:
     assert task_update.status_code == 200
     assert task_update.json()["status"] == "In progress"
     assert client.get(f"/api/v1/projects/{project_id}").json()["task_count"] == 1
+
+
+def test_delete_task_then_empty_project(client: TestClient) -> None:
+    project = create_project(client)
+    task = create_task(client, project["id"], "Remove after review", "2026-10-14")
+
+    blocked = client.delete(f"/api/v1/projects/{project['id']}")
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "conflict"
+
+    deleted_task = client.delete(f"/api/v1/tasks/{task['id']}")
+    assert deleted_task.status_code == 204
+    assert deleted_task.content == b""
+    assert client.get(f"/api/v1/tasks/{task['id']}").status_code == 404
+
+    deleted_project = client.delete(f"/api/v1/projects/{project['id']}")
+    assert deleted_project.status_code == 204
+    assert client.get(f"/api/v1/projects/{project['id']}").status_code == 404
+
+    missing = client.delete("/api/v1/tasks/10000000-0000-4000-8000-000000000000")
+    assert missing.status_code == 404
 
 
 def test_project_filter_sort_and_pagination(client: TestClient) -> None:

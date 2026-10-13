@@ -21,9 +21,9 @@ STATUS_CODES = {
 
 ERROR_USE_CASES = {
     400: "The request is syntactically valid but violates an application-level rule.",
-    401: "Authentication is missing or invalid; authentication is not implemented yet.",
-    403: "The authenticated actor lacks permission; authorization is not implemented yet.",
-    404: "The requested project, task, or route does not exist.",
+    401: "Authentication is missing or invalid.",
+    403: "The authenticated actor lacks permission for this operation.",
+    404: "The requested resource does not exist or is outside the selected workspace.",
     409: "The request conflicts with current state, such as a future uniqueness constraint.",
     422: "A request body, path parameter, or query parameter failed validation.",
     429: "A rate limit was exceeded; rate limiting is not implemented yet.",

@@ -12,6 +12,7 @@ from sqlalchemy import event, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from opsdesk_api.auth import CurrentMembership, current_membership
 from opsdesk_api.config import DEFAULT_WORKSPACE_ID, Settings
 from opsdesk_api.database.models import AuditEvent, Project, Task
 from opsdesk_api.database.session import Database
@@ -34,6 +35,20 @@ def _test_settings() -> Settings:
     return Settings(database_url=DATABASE_URL)
 
 
+def _persistence_test_app(settings: Settings):
+    app = create_app(settings=settings)
+    # Phase 03 tests exercise persistence; authentication has dedicated Phase 04 tests.
+    app.dependency_overrides[current_membership] = lambda: CurrentMembership(
+        DEFAULT_WORKSPACE_ID,
+        None,
+        "https://phase03-test.example/",
+        "persistence-test-actor",
+        "owner",
+        "OpsDesk Local",
+    )
+    return app
+
+
 @pytest.fixture(scope="module", autouse=True)
 def migrate_test_database() -> None:
     settings = _test_settings()
@@ -52,7 +67,7 @@ def migrate_test_database() -> None:
 
 def test_api_records_survive_application_restart() -> None:
     settings = _test_settings()
-    app = create_app(settings=settings)
+    app = _persistence_test_app(settings)
     with TestClient(app) as first_process:
         created = first_process.post(
             "/api/v1/projects",
@@ -67,7 +82,7 @@ def test_api_records_survive_application_restart() -> None:
         assert task.status_code == 201
         task_id = task.json()["id"]
 
-    restarted_app = create_app(settings=settings)
+    restarted_app = _persistence_test_app(settings)
     with TestClient(restarted_app) as restarted_process:
         response = restarted_process.get(f"/api/v1/projects/{project_id}")
     assert response.status_code == 200
@@ -81,7 +96,7 @@ def test_project_and_task_api_pagination_over_seeded_dataset() -> None:
     settings = _test_settings()
     seed(settings.database_url)
     project_id = "10000000-0000-4000-8000-000000000001"
-    with TestClient(create_app(settings=settings)) as client:
+    with TestClient(_persistence_test_app(settings)) as client:
         response = client.get(f"/api/v1/tasks?project_id={project_id}&limit=10&offset=10")
     assert response.status_code == 200
     assert response.json()["page"] == {"limit": 10, "offset": 10, "total": 20}

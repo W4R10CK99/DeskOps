@@ -4,7 +4,7 @@ OpsDesk is a customer-operations workspace portfolio project for managing projec
 
 ## Current state
 
-Phase 00 product/setup and the Phase 02 FastAPI API foundation are complete. The Phase 01 frontend shell remains unchanged and uses local mock data; its tracker-required demo recording remains open but was waived for proceeding. Phase 03 is in progress: PostgreSQL models, migrations, repository, local Compose setup, and database integration tests are authored, but live database gates remain unverified because Docker/PostgreSQL are unavailable in the current environment. Authentication, authorization, file storage, frontend/API integration, and deployment are later phases.
+Phase 03 PostgreSQL persistence and its exit gate are complete based on recorded user and test evidence. Phase 04 identity/access work is underway: Auth0 OIDC browser flow, backend JWT validation, membership-based workspace scoping, and identity migrations are implemented. The backend suite, including cross-workspace PostgreSQL authorization tests, passed against an isolated test database; live Auth0 browser configuration remains unverified. The frontend project/task workflows still use local mock data; full API integration remains a later phase. The Phase 01 demo recording remains open.
 
 ## Repository layout
 
@@ -35,4 +35,4 @@ See [the product brief](docs/product-brief.md), [architecture](docs/architecture
 
 ## Backend development
 
-See [api/README.md](api/README.md) for Python environment setup, API docs, endpoint details, and tests.
+See [api/README.md](api/README.md) for Python environment setup, Auth0 configuration, API docs, endpoint details, and tests. See [web/README.md](web/README.md) for the browser sign-in setup and frontend mock-data boundary.

@@ -3,7 +3,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, status
 
 from opsdesk_api.routers.dependencies import task_service
 from opsdesk_api.schemas.responses import ERROR_RESPONSES
@@ -62,3 +62,16 @@ def update_task(
     service: Annotated[TaskService, Depends(task_service)],
 ) -> TaskRead:
     return service.update_task(task_id, payload)
+
+
+@router.delete(
+    "/{task_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses=ERROR_RESPONSES,
+    summary="Delete a task",
+)
+def delete_task(
+    task_id: UUID,
+    service: Annotated[TaskService, Depends(task_service)],
+) -> None:
+    service.delete_task(task_id)
